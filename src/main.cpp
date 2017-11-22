@@ -1,31 +1,19 @@
 #include <Arduino.h>
 #include <Arduino_FreeRTOS.h>
 #include <Wire.h>
-#include <Kalman.h> 
 #include <functions.h>
 
 void TaskBlink( void *pvParameters );
 void TaskReadModeButton( void *pvParameters );
 void TaskReadLightSensor( void *pvParameters );
 
-Kalman kalmanX; // Create the Kalman instances
-Kalman kalmanY;
-
 int mode = 0;
-uint32_t timer;
 int press_duration = 0;
-uint8_t i2cData[14]; 
+
 int press_flag = 0;
 
 int light_sensor_read = 0;
 int light_sensor_read_mapped = 0;
-
-double accX, accY, accZ;
-double gyroX, gyroY, gyroZ;
-int16_t tempRaw;
-
-double kalAngleX, kalAngleY; 
-
 
 
 void setup() {
@@ -67,23 +55,22 @@ void loop()
 }
 
 /*--------------------------------------------------*/
-/*---------------------- Tasks ---------------------*/
+/*---------------------- Tareas ---------------------*/
 /*--------------------------------------------------*/
 
 void TaskBlink(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
-
-  // initialize digital LED_BUILTIN on pin 13 as an output.
+  
   pinMode(LED_BUILTIN, OUTPUT);
 
-  for (;;) // A Task shall never return or exit.
+  for (;;) 
   {
 
     switch(mode)
      {
      case LIGHT_DEFAULT:
-         // white_led_mapped = map(kalAngleX, -45, 45, 0, 255);
+         
          analogWrite(WHITE_LED_PIN, light_sensor_read);
          break;
        case LIGHT_LOW:
@@ -102,11 +89,11 @@ void TaskBlink(void *pvParameters)  // This is a task.
          break;
      }
 
-    vTaskDelay( 1000 / portTICK_PERIOD_MS ); // wait for one second
+    vTaskDelay( 1000 / portTICK_PERIOD_MS ); 
   }
 }
 
-void TaskReadModeButton(void *pvParameters)  // This is a task.
+void TaskReadModeButton(void *pvParameters) 
 {
   (void) pvParameters;
   
@@ -121,7 +108,7 @@ void TaskReadModeButton(void *pvParameters)  // This is a task.
     {
       mode = LIGHT_DEFAULT;
       press_flag = 0;
-      Serial.println("default");
+      // Serial.println("default");
     }
     if(press_duration < 10)
     {
@@ -130,13 +117,12 @@ void TaskReadModeButton(void *pvParameters)  // This is a task.
   }
   else
   {
-
       if (press_flag == 1) 
       {
         if (mode <  3)
         {
           mode++;
-          Serial.println("mode++");
+          // Serial.println("mode++");
         }
         else
           mode = LIGHT_DEFAULT;  
@@ -148,7 +134,7 @@ void TaskReadModeButton(void *pvParameters)  // This is a task.
     vTaskDelay(1);
   }
 }
-void TaskReadLightSensor(void *pvParameters)  // This is a task.
+void TaskReadLightSensor(void *pvParameters) 
 {
   (void) pvParameters;
   
