@@ -1,16 +1,18 @@
 #include <Arduino.h>
 #include <Arduino_FreeRTOS.h>
-#include <Wire.h>
 #include <functions.h>
 
-void TaskBlink( void *pvParameters );
+void TaskControlLightMode( void *pvParameters );
 void TaskReadModeButton( void *pvParameters );
 void TaskReadLightSensor( void *pvParameters );
+void TaskBlink( void *pvParameters );
 
-int mode = 0;
+int light_mode = LIGHT_OFF;
+int blink_mode = BLINK_OFF;
 int press_duration = 0;
 
-int press_flag = 0;
+int short_press_flag = 0;
+int blink_counter = 0;
 
 int light_sensor_read = 0;
 int light_sensor_read_mapped = 0;
@@ -20,31 +22,40 @@ void setup() {
   
   Serial.begin(9600);
   
-  pinMode(WHITE_LED_PIN, OUTPUT);
-  pinMode(RED_LED_PIN, OUTPUT);
+  pinMode(LED_PIN_FOCUS, OUTPUT);
+  pinMode(LED_PIN_WIDE, OUTPUT);
   pinMode(MODE_BUTTON, INPUT);
 
   xTaskCreate(
-    TaskBlink
-    ,  (const portCHAR *)"Blink"   // A name just for humans
-    ,  128  // This stack size can be checked & adjusted by reading the Stack Highwater
+    TaskControlLightMode
+    ,  (const portCHAR *)"ControlLightMode"   
+    ,  128  // Stack size
     ,  NULL
-    ,  2  // Priority, with 3 (configMAX_PRIORITIES - 1) being the highest, and 0 being the lowest.
+    ,  2    // Priority
     ,  NULL );
 
   xTaskCreate(
     TaskReadModeButton
-    ,  (const portCHAR *) "AnalogRead"
-    ,  128  // Stack size
+    ,  (const portCHAR *) "ReadModeButton"
+    ,  128   // Stack size
     ,  NULL
-    ,  1  // Priority
+    ,  1     // Priority
     ,  NULL );
+
   xTaskCreate(
     TaskReadLightSensor
-    ,  (const portCHAR *) "AnalogRead"
+    ,  (const portCHAR *) "ReadLightSensor"
     ,  128  // Stack size
     ,  NULL
-    ,  1  // Priority
+    ,  1    // Priority
+    ,  NULL );
+
+  xTaskCreate(
+    TaskBlink
+    ,  (const portCHAR *)"Blink"   
+    ,  128  // Stack size
+    ,  NULL
+    ,  2    // Priority
     ,  NULL );
 
 }
@@ -58,34 +69,35 @@ void loop()
 /*---------------------- Tareas ---------------------*/
 /*--------------------------------------------------*/
 
-void TaskBlink(void *pvParameters)  // This is a task.
+void TaskControlLightMode(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
   
-  pinMode(LED_BUILTIN, OUTPUT);
-
   for (;;) 
   {
 
-    switch(mode)
+    switch(light_mode)
      {
-     case LIGHT_DEFAULT:
-         
-         analogWrite(WHITE_LED_PIN, light_sensor_read);
+       case LIGHT_OFF:
+         analogWrite(LED_PIN_FOCUS, 0);
+         analogWrite(LED_PIN_WIDE, 0);
          break;
-       case LIGHT_LOW:
-         analogWrite(WHITE_LED_PIN, 100);
+       case LIGHT_ADAPTABLE:
+         analogWrite(LED_PIN_FOCUS, light_sensor_read);
+         blink_mode = BLINK_BREATH;
          break;
-       case LIGHT_HIGH:
-         analogWrite(WHITE_LED_PIN, 255);
+       case LIGHT_WIDE:
+         analogWrite(LED_PIN_WIDE, 255);
          break;
-       case LIGHT_BATTERY_SAVE:
-         analogWrite(WHITE_LED_PIN, 20);
-  
+       case LIGHT_FOCUS:
+         analogWrite(LED_PIN_FOCUS, 255);
+         break;
+       case LIGHT_WIDE_AND_FOCUS:
+         analogWrite(LED_PIN_FOCUS, 255);
+         analogWrite(LED_PIN_WIDE, 255);
          break;
        default:
-         analogWrite(WHITE_LED_PIN, 0);
-  
+         light_mode = LIGHT_OFF;
          break;
      }
 
@@ -103,37 +115,37 @@ void TaskReadModeButton(void *pvParameters)
   if (!digitalRead(MODE_BUTTON))
   {
     press_duration++;
-    // Serial.println(press_duration);
-    if (press_duration == 50)
+    if (press_duration == PRESS_DURATION_LONG)
     {
-      mode = LIGHT_DEFAULT;
-      press_flag = 0;
-      // Serial.println("default");
+      light_mode = LIGHT_ADAPTABLE;
+      short_press_flag = FALSE;
     }
-    if(press_duration < 10)
+    if(press_duration < PRESS_DURATION_SHORT)
     {
-      press_flag = 1;
+      short_press_flag = TRUE;
     }
   }
   else
   {
-      if (press_flag == 1) 
+      if (short_press_flag == TRUE) 
       {
-        if (mode <  3)
+        if (light_mode <  CONT_MODE_LIGHT)
         {
-          mode++;
-          // Serial.println("mode++");
+          light_mode++;
         }
         else
-          mode = LIGHT_DEFAULT;  
+        {
+          light_mode = LIGHT_ADAPTABLE;  
+        }
       }
       press_duration = 0;
-      press_flag = 0;
+      short_press_flag = FALSE;
   }
    
     vTaskDelay(1);
   }
 }
+
 void TaskReadLightSensor(void *pvParameters) 
 {
   (void) pvParameters;
@@ -149,3 +161,78 @@ void TaskReadLightSensor(void *pvParameters)
     vTaskDelay(5);
   }
 }
+
+void TaskBlink(void *pvParameters)  // This is a task.
+{
+  (void) pvParameters;
+  
+  pinMode(LED_PIN_BLINK_BLUE, OUTPUT);
+  pinMode(LED_PIN_BLINK_GREEN, OUTPUT);
+
+  for (;;) 
+  {
+    switch(blink_mode)
+    {
+      case BLINK_OFF:
+        analogWrite(LED_PIN_BLINK_BLUE,0);
+        analogWrite(LED_PIN_BLINK_GREEN,0);
+        break;
+      case BLINK_SLOW:
+        blink_counter++;
+        if (blink_counter<10) 
+        {
+          analogWrite(LED_PIN_BLINK_BLUE,0);
+          analogWrite(LED_PIN_BLINK_GREEN,0);
+        }
+        if ( blink_counter >= 10 && blink_counter < 11 ) 
+        {
+          analogWrite(LED_PIN_BLINK_BLUE,255);
+          analogWrite(LED_PIN_BLINK_GREEN,255);
+        }
+        if ( blink_counter == 11 ) 
+        {
+          blink_counter = 0;
+        }
+        break;
+      case BLINK_FAST:
+        blink_counter++;
+        if (blink_counter<5) 
+        {
+          analogWrite(LED_PIN_BLINK_BLUE,0);
+          analogWrite(LED_PIN_BLINK_GREEN,0);
+        }
+        if ( blink_counter >= 5 && blink_counter < 6 ) 
+        {
+          analogWrite(LED_PIN_BLINK_BLUE,255);
+          analogWrite(LED_PIN_BLINK_GREEN,255);
+        }
+        if ( blink_counter == 6 ) 
+        {
+          blink_counter = 0;
+        }
+        break;
+      case BLINK_BREATH:
+        blink_counter++;
+        if ( blink_counter < 127 ) 
+        {
+          analogWrite(LED_PIN_BLINK_BLUE,blink_counter*2);
+          analogWrite(LED_PIN_BLINK_GREEN,blink_counter*2);
+        }
+        if ( blink_counter >= 127 && blink_counter < 255 ) 
+        {
+          analogWrite(LED_PIN_BLINK_BLUE, 512 - blink_counter*2 );
+          analogWrite(LED_PIN_BLINK_GREEN, 512 - blink_counter*2 );
+        }
+        if ( blink_counter == 255 ) 
+        {
+          blink_counter = 0;
+        }
+
+        break;
+    }
+
+    vTaskDelay( 100 / portTICK_PERIOD_MS ); 
+  }
+}
+
+
