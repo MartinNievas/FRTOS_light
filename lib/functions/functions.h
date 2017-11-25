@@ -10,7 +10,7 @@
 #define FALSE 0
 #define TRUE  1
 
-#define CONT_MODE_LIGHT     6
+#define CONT_MODE_LIGHT     5
 
 #define PRESS_DURATION_LONG   50
 #define PRESS_DURATION_SHORT  10

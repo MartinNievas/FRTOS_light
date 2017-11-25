@@ -31,7 +31,7 @@ void setup() {
     ,  (const portCHAR *)"ControlLightMode"   
     ,  128  // Stack size
     ,  NULL
-    ,  2    // Priority
+    ,  3    // Priority
     ,  NULL );
 
   xTaskCreate(
@@ -39,7 +39,7 @@ void setup() {
     ,  (const portCHAR *) "ReadModeButton"
     ,  128   // Stack size
     ,  NULL
-    ,  1     // Priority
+    ,  2     // Priority
     ,  NULL );
 
   xTaskCreate(
@@ -47,7 +47,7 @@ void setup() {
     ,  (const portCHAR *) "ReadLightSensor"
     ,  128  // Stack size
     ,  NULL
-    ,  1    // Priority
+    ,  2    // Priority
     ,  NULL );
 
   xTaskCreate(
@@ -84,24 +84,29 @@ void TaskControlLightMode(void *pvParameters)  // This is a task.
          break;
        case LIGHT_ADAPTABLE:
          analogWrite(LED_PIN_FOCUS, light_sensor_read);
-         blink_mode = BLINK_BREATH;
+         analogWrite(LED_PIN_WIDE, light_sensor_read);
          break;
        case LIGHT_WIDE:
          analogWrite(LED_PIN_WIDE, 255);
+         analogWrite(LED_PIN_FOCUS, 0);
+         blink_mode = BLINK_BREATH;
          break;
        case LIGHT_FOCUS:
          analogWrite(LED_PIN_FOCUS, 255);
+         analogWrite(LED_PIN_WIDE, 0);
+         blink_mode = BLINK_SLOW;
          break;
        case LIGHT_WIDE_AND_FOCUS:
          analogWrite(LED_PIN_FOCUS, 255);
          analogWrite(LED_PIN_WIDE, 255);
+         blink_mode = BLINK_FAST;
          break;
        default:
          light_mode = LIGHT_OFF;
          break;
      }
 
-    vTaskDelay( 1000 / portTICK_PERIOD_MS ); 
+    vTaskDelay( 100 / portTICK_PERIOD_MS ); 
   }
 }
 
@@ -174,20 +179,20 @@ void TaskBlink(void *pvParameters)  // This is a task.
     switch(blink_mode)
     {
       case BLINK_OFF:
-        analogWrite(LED_PIN_BLINK_BLUE,0);
-        analogWrite(LED_PIN_BLINK_GREEN,0);
+        analogWrite(LED_PIN_BLINK_BLUE,255);
+        analogWrite(LED_PIN_BLINK_GREEN,255);
         break;
       case BLINK_SLOW:
         blink_counter++;
         if (blink_counter<10) 
         {
-          analogWrite(LED_PIN_BLINK_BLUE,0);
-          analogWrite(LED_PIN_BLINK_GREEN,0);
+          analogWrite(LED_PIN_BLINK_BLUE,255);
+          analogWrite(LED_PIN_BLINK_GREEN,255);
         }
         if ( blink_counter >= 10 && blink_counter < 11 ) 
         {
-          analogWrite(LED_PIN_BLINK_BLUE,255);
-          analogWrite(LED_PIN_BLINK_GREEN,255);
+          analogWrite(LED_PIN_BLINK_BLUE,0);
+          analogWrite(LED_PIN_BLINK_GREEN,0);
         }
         if ( blink_counter == 11 ) 
         {
@@ -198,13 +203,13 @@ void TaskBlink(void *pvParameters)  // This is a task.
         blink_counter++;
         if (blink_counter<5) 
         {
-          analogWrite(LED_PIN_BLINK_BLUE,0);
-          analogWrite(LED_PIN_BLINK_GREEN,0);
+          analogWrite(LED_PIN_BLINK_BLUE,255);
+          analogWrite(LED_PIN_BLINK_GREEN,255);
         }
         if ( blink_counter >= 5 && blink_counter < 6 ) 
         {
-          analogWrite(LED_PIN_BLINK_BLUE,255);
-          analogWrite(LED_PIN_BLINK_GREEN,255);
+          analogWrite(LED_PIN_BLINK_BLUE,0);
+          analogWrite(LED_PIN_BLINK_GREEN,0);
         }
         if ( blink_counter == 6 ) 
         {
@@ -213,15 +218,18 @@ void TaskBlink(void *pvParameters)  // This is a task.
         break;
       case BLINK_BREATH:
         blink_counter++;
-        if ( blink_counter < 127 ) 
-        {
-          analogWrite(LED_PIN_BLINK_BLUE,blink_counter*2);
-          analogWrite(LED_PIN_BLINK_GREEN,blink_counter*2);
-        }
-        if ( blink_counter >= 127 && blink_counter < 255 ) 
+        if ( blink_counter <= 127 ) 
         {
           analogWrite(LED_PIN_BLINK_BLUE, 512 - blink_counter*2 );
           analogWrite(LED_PIN_BLINK_GREEN, 512 - blink_counter*2 );
+          Serial.println(512 - blink_counter*2);
+
+        }
+        if ( blink_counter > 127 && blink_counter < 255 ) 
+        {
+          analogWrite(LED_PIN_BLINK_BLUE,blink_counter*2);
+          analogWrite(LED_PIN_BLINK_GREEN,blink_counter*2);
+          Serial.println(blink_counter*2);
         }
         if ( blink_counter == 255 ) 
         {
@@ -231,7 +239,7 @@ void TaskBlink(void *pvParameters)  // This is a task.
         break;
     }
 
-    vTaskDelay( 100 / portTICK_PERIOD_MS ); 
+    vTaskDelay( 25 / portTICK_PERIOD_MS ); 
   }
 }
 
