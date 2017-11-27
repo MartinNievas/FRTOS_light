@@ -2,6 +2,13 @@
 #include <Arduino_FreeRTOS.h>
 #include <functions.h>
 
+#define NZEROS 4
+#define NPOLES 4
+#define GAIN   1.509971716e+00
+
+static float xv[NZEROS+1], yv[NPOLES+1];
+
+
 void TaskControlLightMode( void *pvParameters );
 void TaskReadModeButton( void *pvParameters );
 void TaskReadLightSensor( void *pvParameters );
@@ -15,7 +22,12 @@ int short_press_flag = 0;
 int blink_counter = 0;
 
 int light_sensor_read = 0;
-int light_sensor_read_mapped = 0;
+int light_sensor_read2 = 0;
+int light_sensor_normalized_mapped = 0;
+float light_sensor_filtered = 0;
+float light_sensor_filtered_mapped = 0;
+
+int battery_3_7_voltage = 0;
 
 
 void setup() {
@@ -58,6 +70,7 @@ void setup() {
     ,  2    // Priority
     ,  NULL );
 
+
 }
 
 void loop()
@@ -81,10 +94,13 @@ void TaskControlLightMode(void *pvParameters)  // This is a task.
        case LIGHT_OFF:
          analogWrite(LED_PIN_FOCUS, 0);
          analogWrite(LED_PIN_WIDE, 0);
+         blink_mode = BLINK_OFF;
          break;
        case LIGHT_ADAPTABLE:
-         analogWrite(LED_PIN_FOCUS, light_sensor_read);
-         analogWrite(LED_PIN_WIDE, light_sensor_read);
+         // analogWrite(LED_PIN_FOCUS, 255 - light_sensor_read);
+         // analogWrite(LED_PIN_WIDE, 255 - light_sensor_read);
+         analogWrite(LED_PIN_FOCUS, 255 - light_sensor_filtered_mapped);
+         analogWrite(LED_PIN_WIDE, 255 - light_sensor_filtered_mapped);
          break;
        case LIGHT_WIDE:
          analogWrite(LED_PIN_WIDE, 255);
@@ -154,16 +170,46 @@ void TaskReadModeButton(void *pvParameters)
 void TaskReadLightSensor(void *pvParameters) 
 {
   (void) pvParameters;
+
+  pinMode(7, INPUT);
+  pinMode(8, INPUT);
   
   for (;;)
   {
-    light_sensor_read = analogRead(A0);
-    light_sensor_read_mapped = map(light_sensor_read, 0, 1024, 0, 255);
-    // Serial.print(light_sensor_read);
-    // Serial.print("\t");
-    // Serial.println(light_sensor_read_mapped);
 
-    vTaskDelay(5);
+
+    light_sensor_read2 = analogRead(A0);
+    // while (digitalRead(8) == 1 && digitalRead(7) == 1) {
+    light_sensor_read = analogRead(A0);
+    // }
+    battery_3_7_voltage = analogRead(A1);
+    light_sensor_normalized_mapped = map(light_sensor_read, 
+                                         0, battery_3_7_voltage, 
+                                         0, 255);
+
+xv[0] = light_sensor_read2 / GAIN;
+        yv[0] = yv[1]; yv[1] = yv[2]; yv[2] = yv[3]; yv[3] = yv[4]; 
+        yv[4] =   xv[0]
+                     + ( -0.2247842916 * yv[0]) + (  1.2272168645 * yv[1])
+                     + ( -2.5933688894 * yv[2]) + (  2.5404665013 * yv[3]);
+        light_sensor_filtered = yv[4];
+    light_sensor_filtered_mapped = map(light_sensor_filtered, 
+                                         0, 8000, 
+                                         0, 255);
+
+
+    Serial.print(light_sensor_read);
+    Serial.print("\t");
+    // Serial.print(light_sensor_read2);
+    // Serial.print("\t");
+    Serial.print(light_sensor_filtered_mapped);
+    Serial.print("\t");
+    Serial.print(battery_3_7_voltage);
+    Serial.print("\t");
+    Serial.print(light_sensor_normalized_mapped);
+    Serial.print("\n");
+    
+    vTaskDelay( 90 / portTICK_PERIOD_MS ); 
   }
 }
 
@@ -194,7 +240,7 @@ void TaskBlink(void *pvParameters)  // This is a task.
           analogWrite(LED_PIN_BLINK_BLUE,0);
           analogWrite(LED_PIN_BLINK_GREEN,0);
         }
-        if ( blink_counter == 11 ) 
+        if ( blink_counter >= 11 ) 
         {
           blink_counter = 0;
         }
@@ -211,7 +257,7 @@ void TaskBlink(void *pvParameters)  // This is a task.
           analogWrite(LED_PIN_BLINK_BLUE,0);
           analogWrite(LED_PIN_BLINK_GREEN,0);
         }
-        if ( blink_counter == 6 ) 
+        if ( blink_counter >= 6 ) 
         {
           blink_counter = 0;
         }
@@ -222,14 +268,14 @@ void TaskBlink(void *pvParameters)  // This is a task.
         {
           analogWrite(LED_PIN_BLINK_BLUE, 512 - blink_counter*2 );
           analogWrite(LED_PIN_BLINK_GREEN, 512 - blink_counter*2 );
-          Serial.println(512 - blink_counter*2);
+          // Serial.println(512 - blink_counter*2);
 
         }
         if ( blink_counter > 127 && blink_counter < 255 ) 
         {
           analogWrite(LED_PIN_BLINK_BLUE,blink_counter*2);
           analogWrite(LED_PIN_BLINK_GREEN,blink_counter*2);
-          Serial.println(blink_counter*2);
+          // Serial.println(blink_counter*2);
         }
         if ( blink_counter == 255 ) 
         {
