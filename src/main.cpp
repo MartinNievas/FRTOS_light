@@ -18,6 +18,8 @@ int light_mode = LIGHT_OFF;
 int blink_mode = BLINK_OFF;
 int press_duration = 0;
 
+int intensity_mode = MODO_INTENSIDAD_NORMAL;
+
 int short_press_flag = 0;
 int blink_counter = 0;
 
@@ -37,6 +39,9 @@ void setup() {
   pinMode(LED_PIN_FOCUS, OUTPUT);
   pinMode(LED_PIN_WIDE, OUTPUT);
   pinMode(MODE_BUTTON, INPUT);
+  pinMode(LED_BATTERY_RED, OUTPUT);
+  pinMode(LED_BATTERY_YELLOW, OUTPUT);
+  pinMode(LED_BATTERY_GREEN, OUTPUT);
 
   xTaskCreate(
     TaskControlLightMode
@@ -97,15 +102,27 @@ void TaskControlLightMode(void *pvParameters)  // This is a task.
          blink_mode = BLINK_OFF;
          break;
        case LIGHT_ADAPTABLE:
-         // analogWrite(LED_PIN_FOCUS, 255 - light_sensor_read);
-         // analogWrite(LED_PIN_WIDE, 255 - light_sensor_read);
-         analogWrite(LED_PIN_FOCUS, 255 - light_sensor_filtered_mapped);
-         analogWrite(LED_PIN_WIDE, 255 - light_sensor_filtered_mapped);
+         blink_mode = BLINK_BREATH;
+          switch(intensity_mode)
+          {
+            case MODO_INTENSIDAD_CERCA:
+              analogWrite(LED_PIN_FOCUS, 30 );
+              analogWrite(LED_PIN_WIDE, 30 );
+              break;
+            case MODO_INTENSIDAD_NORMAL:
+              analogWrite(LED_PIN_FOCUS, 100 );
+              analogWrite(LED_PIN_WIDE, 100 );
+              break;
+            case MODO_INTENSIDAD_LEJOS:
+              analogWrite(LED_PIN_FOCUS, 200 );
+              analogWrite(LED_PIN_WIDE, 200 );
+              break;
+          }
          break;
        case LIGHT_WIDE:
-         analogWrite(LED_PIN_WIDE, 255);
+         analogWrite(LED_PIN_WIDE, 50);
          analogWrite(LED_PIN_FOCUS, 0);
-         blink_mode = BLINK_BREATH;
+         blink_mode = BLINK_SLOW;
          break;
        case LIGHT_FOCUS:
          analogWrite(LED_PIN_FOCUS, 255);
@@ -113,8 +130,8 @@ void TaskControlLightMode(void *pvParameters)  // This is a task.
          blink_mode = BLINK_SLOW;
          break;
        case LIGHT_WIDE_AND_FOCUS:
-         analogWrite(LED_PIN_FOCUS, 255);
-         analogWrite(LED_PIN_WIDE, 255);
+         analogWrite(LED_PIN_FOCUS, 200);
+         analogWrite(LED_PIN_WIDE, 200);
          blink_mode = BLINK_FAST;
          break;
        default:
@@ -131,6 +148,7 @@ void TaskReadModeButton(void *pvParameters)
   (void) pvParameters;
   
   pinMode(MODE_BUTTON, INPUT);
+
   for (;;)
   {
   if (!digitalRead(MODE_BUTTON))
@@ -162,7 +180,30 @@ void TaskReadModeButton(void *pvParameters)
       press_duration = 0;
       short_press_flag = FALSE;
   }
-   
+  
+
+  if (battery_3_7_voltage <= BATTERY_LOW) 
+  {
+    digitalWrite(LED_BATTERY_RED, 1);
+    digitalWrite(LED_BATTERY_YELLOW, 0);
+    digitalWrite(LED_BATTERY_GREEN, 0);
+  }
+
+  if (battery_3_7_voltage > BATTERY_LOW && battery_3_7_voltage <= BATTERY_MEDIUM) 
+  {
+    digitalWrite(LED_BATTERY_RED, 0);
+    digitalWrite(LED_BATTERY_YELLOW, 1);
+    digitalWrite(LED_BATTERY_GREEN, 0);
+  }
+
+  if (battery_3_7_voltage > BATTERY_MEDIUM ) 
+  {
+    digitalWrite(LED_BATTERY_RED, 0);
+    digitalWrite(LED_BATTERY_YELLOW, 0);
+    digitalWrite(LED_BATTERY_GREEN, 1);
+  }
+
+
     vTaskDelay(1);
   }
 }
@@ -178,36 +219,51 @@ void TaskReadLightSensor(void *pvParameters)
   {
 
 
-    light_sensor_read2 = analogRead(A0);
-    // while (digitalRead(8) == 1 && digitalRead(7) == 1) {
     light_sensor_read = analogRead(A0);
-    // }
+
     battery_3_7_voltage = analogRead(A1);
+
     light_sensor_normalized_mapped = map(light_sensor_read, 
                                          0, battery_3_7_voltage, 
                                          0, 255);
 
-xv[0] = light_sensor_read2 / GAIN;
-        yv[0] = yv[1]; yv[1] = yv[2]; yv[2] = yv[3]; yv[3] = yv[4]; 
-        yv[4] =   xv[0]
-                     + ( -0.2247842916 * yv[0]) + (  1.2272168645 * yv[1])
-                     + ( -2.5933688894 * yv[2]) + (  2.5404665013 * yv[3]);
-        light_sensor_filtered = yv[4];
     light_sensor_filtered_mapped = map(light_sensor_filtered, 
                                          0, 8000, 
                                          0, 255);
 
+    /* Controlador de la máquina de estados para el control de la intensidad */
+    if (intensity_mode == MODO_INTENSIDAD_CERCA)
+    {
+      if (light_sensor_read <= INTENSIDAD_NORMAL_H)   
+        intensity_mode = MODO_INTENSIDAD_NORMAL;
+      if (light_sensor_read > INTENSIDAD_CERCA_L ) 
+        intensity_mode = MODO_INTENSIDAD_CERCA;
+    }
+    else if (intensity_mode == MODO_INTENSIDAD_NORMAL)
+    {
+      if (light_sensor_read <= INTENSIDAD_LEJOS_H)   
+        intensity_mode = MODO_INTENSIDAD_LEJOS;
+      if (light_sensor_read > INTENSIDAD_CERCA_L ) 
+        intensity_mode = MODO_INTENSIDAD_CERCA;
+    }
+    else if (intensity_mode == MODO_INTENSIDAD_LEJOS)
+    {
+      if (light_sensor_read <= INTENSIDAD_LEJOS_H)   
+        intensity_mode = MODO_INTENSIDAD_LEJOS;
+      if (light_sensor_read > INTENSIDAD_NORMAL_L ) 
+        intensity_mode = MODO_INTENSIDAD_NORMAL;
+    }
 
     Serial.print(light_sensor_read);
     Serial.print("\t");
-    // Serial.print(light_sensor_read2);
+    // Serial.print(light_sensor_normalized_mapped);
     // Serial.print("\t");
-    Serial.print(light_sensor_filtered_mapped);
-    Serial.print("\t");
+    // Serial.print(light_sensor_filtered_mapped);
+    // Serial.print("\t");
     Serial.print(battery_3_7_voltage);
     Serial.print("\t");
     Serial.print(light_sensor_normalized_mapped);
-    Serial.print("\n");
+    Serial.println(" ");
     
     vTaskDelay( 90 / portTICK_PERIOD_MS ); 
   }
