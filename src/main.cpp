@@ -1,13 +1,11 @@
 #include <Arduino.h>
 #include <Arduino_FreeRTOS.h>
 #include <functions.h>
+#include <configurations.h>
 
 #define NZEROS 4
 #define NPOLES 4
 #define GAIN   1.509971716e+00
-
-static float xv[NZEROS+1], yv[NPOLES+1];
-
 
 void TaskControlLightMode( void *pvParameters );
 void TaskReadModeButton( void *pvParameters );
@@ -36,13 +34,15 @@ void setup() {
   
   Serial.begin(9600);
   
+  /* Configuración de los pines de entrada y salida */
+  pinMode(MODE_BUTTON, INPUT);
   pinMode(LED_PIN_FOCUS, OUTPUT);
   pinMode(LED_PIN_WIDE, OUTPUT);
-  pinMode(MODE_BUTTON, INPUT);
-  pinMode(LED_BATTERY_RED, OUTPUT);
-  pinMode(LED_BATTERY_YELLOW, OUTPUT);
-  pinMode(LED_BATTERY_GREEN, OUTPUT);
+  pinMode(LED_PIN_BATTERY_RED, OUTPUT);
+  pinMode(LED_PIN_BATTERY_YELLOW, OUTPUT);
+  pinMode(LED_PIN_BATTERY_GREEN, OUTPUT);
 
+  /* Creación de las tareas */
   xTaskCreate(
     TaskControlLightMode
     ,  (const portCHAR *)"ControlLightMode"   
@@ -80,14 +80,11 @@ void setup() {
 
 void loop()
 {
-  // Empty. Things are done in Tasks.
+  // Nada. La magia sucede en las tareas 
 }
 
-/*--------------------------------------------------*/
-/*---------------------- Tareas ---------------------*/
-/*--------------------------------------------------*/
-
-void TaskControlLightMode(void *pvParameters)  // This is a task.
+/* Tarea encargada de controlar la intensidad de los LEDs principales */
+void TaskControlLightMode(void *pvParameters)  
 {
   (void) pvParameters;
   
@@ -106,32 +103,32 @@ void TaskControlLightMode(void *pvParameters)  // This is a task.
           switch(intensity_mode)
           {
             case MODO_INTENSIDAD_CERCA:
-              analogWrite(LED_PIN_FOCUS, 30 );
-              analogWrite(LED_PIN_WIDE, 30 );
+              analogWrite(LED_PIN_FOCUS, PWM_CERCA );
+              analogWrite(LED_PIN_WIDE, PWM_CERCA );
               break;
             case MODO_INTENSIDAD_NORMAL:
-              analogWrite(LED_PIN_FOCUS, 100 );
-              analogWrite(LED_PIN_WIDE, 100 );
+              analogWrite(LED_PIN_FOCUS, PWM_NORMAL );
+              analogWrite(LED_PIN_WIDE, PWM_NORMAL );
               break;
             case MODO_INTENSIDAD_LEJOS:
-              analogWrite(LED_PIN_FOCUS, 200 );
-              analogWrite(LED_PIN_WIDE, 200 );
+              analogWrite(LED_PIN_FOCUS, PWM_LEJOS );
+              analogWrite(LED_PIN_WIDE, PWM_LEJOS );
               break;
           }
          break;
        case LIGHT_WIDE:
-         analogWrite(LED_PIN_WIDE, 50);
-         analogWrite(LED_PIN_FOCUS, 0);
+         analogWrite(LED_PIN_WIDE, PWM_CERCA);
+         analogWrite(LED_PIN_FOCUS, PWM_APAGADO);
          blink_mode = BLINK_SLOW;
          break;
        case LIGHT_FOCUS:
-         analogWrite(LED_PIN_FOCUS, 255);
-         analogWrite(LED_PIN_WIDE, 0);
+         analogWrite(LED_PIN_FOCUS, PWM_MAXIMO);
+         analogWrite(LED_PIN_WIDE, PWM_APAGADO);
          blink_mode = BLINK_SLOW;
          break;
        case LIGHT_WIDE_AND_FOCUS:
-         analogWrite(LED_PIN_FOCUS, 200);
-         analogWrite(LED_PIN_WIDE, 200);
+         analogWrite(LED_PIN_FOCUS, PWM_LEJOS);
+         analogWrite(LED_PIN_WIDE, PWM_LEJOS);
          blink_mode = BLINK_FAST;
          break;
        default:
@@ -143,6 +140,8 @@ void TaskControlLightMode(void *pvParameters)  // This is a task.
   }
 }
 
+/* Tarea encargada de leer el botón de modo. 
+ * Controla cuanto tiempo se mantuvo presionado el botón */
 void TaskReadModeButton(void *pvParameters) 
 {
   (void) pvParameters;
@@ -182,32 +181,14 @@ void TaskReadModeButton(void *pvParameters)
   }
   
 
-  if (battery_3_7_voltage <= BATTERY_LOW) 
-  {
-    digitalWrite(LED_BATTERY_RED, 1);
-    digitalWrite(LED_BATTERY_YELLOW, 0);
-    digitalWrite(LED_BATTERY_GREEN, 0);
-  }
-
-  if (battery_3_7_voltage > BATTERY_LOW && battery_3_7_voltage <= BATTERY_MEDIUM) 
-  {
-    digitalWrite(LED_BATTERY_RED, 0);
-    digitalWrite(LED_BATTERY_YELLOW, 1);
-    digitalWrite(LED_BATTERY_GREEN, 0);
-  }
-
-  if (battery_3_7_voltage > BATTERY_MEDIUM ) 
-  {
-    digitalWrite(LED_BATTERY_RED, 0);
-    digitalWrite(LED_BATTERY_YELLOW, 0);
-    digitalWrite(LED_BATTERY_GREEN, 1);
-  }
-
+  check_battery_level(battery_3_7_voltage);
 
     vTaskDelay(1);
   }
 }
 
+/* Tarea encargada de leer el fototransistor. 
+ * Además actualiza el estado que controla la intensidad de los LED  */
 void TaskReadLightSensor(void *pvParameters) 
 {
   (void) pvParameters;
@@ -223,52 +204,14 @@ void TaskReadLightSensor(void *pvParameters)
 
     battery_3_7_voltage = analogRead(A1);
 
-    light_sensor_normalized_mapped = map(light_sensor_read, 
-                                         0, battery_3_7_voltage, 
-                                         0, 255);
-
-    light_sensor_filtered_mapped = map(light_sensor_filtered, 
-                                         0, 8000, 
-                                         0, 255);
-
     /* Controlador de la máquina de estados para el control de la intensidad */
-    if (intensity_mode == MODO_INTENSIDAD_CERCA)
-    {
-      if (light_sensor_read <= INTENSIDAD_NORMAL_H)   
-        intensity_mode = MODO_INTENSIDAD_NORMAL;
-      if (light_sensor_read > INTENSIDAD_CERCA_L ) 
-        intensity_mode = MODO_INTENSIDAD_CERCA;
-    }
-    else if (intensity_mode == MODO_INTENSIDAD_NORMAL)
-    {
-      if (light_sensor_read <= INTENSIDAD_LEJOS_H)   
-        intensity_mode = MODO_INTENSIDAD_LEJOS;
-      if (light_sensor_read > INTENSIDAD_CERCA_L ) 
-        intensity_mode = MODO_INTENSIDAD_CERCA;
-    }
-    else if (intensity_mode == MODO_INTENSIDAD_LEJOS)
-    {
-      if (light_sensor_read <= INTENSIDAD_LEJOS_H)   
-        intensity_mode = MODO_INTENSIDAD_LEJOS;
-      if (light_sensor_read > INTENSIDAD_NORMAL_L ) 
-        intensity_mode = MODO_INTENSIDAD_NORMAL;
-    }
+    check_brightness_level( light_sensor_read);
 
-    Serial.print(light_sensor_read);
-    Serial.print("\t");
-    // Serial.print(light_sensor_normalized_mapped);
-    // Serial.print("\t");
-    // Serial.print(light_sensor_filtered_mapped);
-    // Serial.print("\t");
-    Serial.print(battery_3_7_voltage);
-    Serial.print("\t");
-    Serial.print(light_sensor_normalized_mapped);
-    Serial.println(" ");
-    
     vTaskDelay( 90 / portTICK_PERIOD_MS ); 
   }
 }
 
+/* Tarea encargada de realizar el parpadeo del led RGB */
 void TaskBlink(void *pvParameters)  // This is a task.
 {
   (void) pvParameters;
@@ -281,39 +224,39 @@ void TaskBlink(void *pvParameters)  // This is a task.
     switch(blink_mode)
     {
       case BLINK_OFF:
-        analogWrite(LED_PIN_BLINK_BLUE,255);
-        analogWrite(LED_PIN_BLINK_GREEN,255);
+        analogWrite(LED_PIN_BLINK_BLUE, PWM_BLINK_OFF);
+        analogWrite(LED_PIN_BLINK_GREEN, PWM_BLINK_OFF);
         break;
       case BLINK_SLOW:
         blink_counter++;
-        if (blink_counter<10) 
+        if (blink_counter < BLINK_DURATION_SLOW) 
         {
-          analogWrite(LED_PIN_BLINK_BLUE,255);
-          analogWrite(LED_PIN_BLINK_GREEN,255);
+          analogWrite(LED_PIN_BLINK_BLUE, PWM_BLINK_OFF);
+          analogWrite(LED_PIN_BLINK_GREEN, PWM_BLINK_OFF);
         }
-        if ( blink_counter >= 10 && blink_counter < 11 ) 
+        if ( blink_counter == BLINK_DURATION_SLOW ) 
         {
-          analogWrite(LED_PIN_BLINK_BLUE,0);
-          analogWrite(LED_PIN_BLINK_GREEN,0);
+          analogWrite(LED_PIN_BLINK_BLUE, PWM_BLINK_ON);
+          analogWrite(LED_PIN_BLINK_GREEN, PWM_BLINK_ON);
         }
-        if ( blink_counter >= 11 ) 
+        if ( blink_counter > BLINK_DURATION_SLOW ) 
         {
           blink_counter = 0;
         }
         break;
       case BLINK_FAST:
         blink_counter++;
-        if (blink_counter<5) 
+        if (blink_counter < BLINK_DURATION_FAST) 
         {
-          analogWrite(LED_PIN_BLINK_BLUE,255);
-          analogWrite(LED_PIN_BLINK_GREEN,255);
+          analogWrite(LED_PIN_BLINK_BLUE, PWM_BLINK_OFF);
+          analogWrite(LED_PIN_BLINK_GREEN, PWM_BLINK_OFF);
         }
-        if ( blink_counter >= 5 && blink_counter < 6 ) 
+        if ( blink_counter == BLINK_DURATION_FAST ) 
         {
-          analogWrite(LED_PIN_BLINK_BLUE,0);
-          analogWrite(LED_PIN_BLINK_GREEN,0);
+          analogWrite(LED_PIN_BLINK_BLUE, PWM_BLINK_OFF);
+          analogWrite(LED_PIN_BLINK_GREEN, PWM_BLINK_OFF);
         }
-        if ( blink_counter >= 6 ) 
+        if ( blink_counter > BLINK_DURATION_FAST ) 
         {
           blink_counter = 0;
         }
@@ -324,14 +267,12 @@ void TaskBlink(void *pvParameters)  // This is a task.
         {
           analogWrite(LED_PIN_BLINK_BLUE, 512 - blink_counter*2 );
           analogWrite(LED_PIN_BLINK_GREEN, 512 - blink_counter*2 );
-          // Serial.println(512 - blink_counter*2);
 
         }
         if ( blink_counter > 127 && blink_counter < 255 ) 
         {
           analogWrite(LED_PIN_BLINK_BLUE,blink_counter*2);
           analogWrite(LED_PIN_BLINK_GREEN,blink_counter*2);
-          // Serial.println(blink_counter*2);
         }
         if ( blink_counter == 255 ) 
         {
