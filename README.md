@@ -1,3 +1,6 @@
+[![License: CC BY-SA 4.0](https://img.shields.io/badge/License-CC%20BY--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-sa/4.0/)
+![](https://img.shields.io/badge/Style-Trail_Running-brightgreen.svg)
+
 # Linterna frontal con diferentes modos de iluminación
 La linterna cuenta con diferentes modos de iluminación. Es una versión simplificada inspirada en el modelo 
 [NAO&reg;](https://www.petzl.com/US/en/Sport/PERFORMANCE-headlamps/NAO) de Petzl&reg;
